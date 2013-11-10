@@ -103,9 +103,12 @@ func exists_message_table(dbh *sqlite3.Conn) int {
 }
 
 func get_message_from_db(dbh *sqlite3.Conn) {
-	sql := "select chat.guid, message.text from chat, message where chat.account_id=message.account_guid order by chat.guid, message.date;"
+	sql := `select chat.guid, message.text, message.date + 978307200 as m_date
+        from chat, message where chat.account_id=message.account_guid order by
+        chat.guid, message.date;`
 
 	fmt.Println("Begin exporting ...")
+	//	fmt.Println(sql)
 	sms_backup_file := get_backup_file()
 	out_file, err := os.OpenFile(sms_backup_file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
@@ -118,8 +121,10 @@ func get_message_from_db(dbh *sqlite3.Conn) {
 	for data, err := dbh.Query(sql); err == nil; err = data.Next() {
 		data.Scan(row)
 		if str, ok := row["text"].(string); ok {
+			date_now := row["m_date"].(int64)
+			sms_time := time.Unix(date_now, 0)
 			phone_number := get_phone_number(row["guid"])
-			sms := phone_number + " " + str
+			sms := phone_number + " " + sms_time.String() + " " + str
 			if _, err := out_file.WriteString(sms); err != nil {
 				fmt.Println("write sms file error")
 				log.Fatal(err)
