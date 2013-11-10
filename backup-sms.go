@@ -9,6 +9,9 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"strings"
+	"time"
 )
 
 func main() {
@@ -20,6 +23,9 @@ func main() {
 	pathinfo := []string{current_dir.HomeDir, "AppData", "Roaming", "Apple Computer", "MobileSync", "Backup"}
 	backup_path := make_path(pathinfo)
 	filepath.Walk(backup_path, file_func)
+
+	fmt.Println("the export sms file lies on the Desktop and name is sms_backup.txt")
+	time.Sleep(10000 * time.Millisecond)
 }
 
 func make_path(pathinfo []string) string {
@@ -34,7 +40,7 @@ func file_func(path string, info os.FileInfo, err error) error {
 	}
 
 	if is_sqlite_file(path) == 1 {
-		fmt.Println(path)
+		//		fmt.Println(path)
 		get_info_from_file(path)
 	}
 
@@ -88,7 +94,7 @@ func exists_message_table(dbh *sqlite3.Conn) int {
 
 	if err == nil {
 		if exists.Valid() {
-			fmt.Println(exists.String())
+			//			fmt.Println("found message db file")
 			flag = 1
 		}
 	}
@@ -97,9 +103,11 @@ func exists_message_table(dbh *sqlite3.Conn) int {
 }
 
 func get_message_from_db(dbh *sqlite3.Conn) {
-	sql := "select chat.guid, message.text from chat, message where chat.account_id=message.account_guid order by message.date;"
+	sql := "select chat.guid, message.text from chat, message where chat.account_id=message.account_guid order by chat.guid, message.date;"
 
-	out_file, err := os.OpenFile("./sms.export", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	fmt.Println("Begin exporting ...")
+	sms_backup_file := get_backup_file()
+	out_file, err := os.OpenFile(sms_backup_file, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
 	if err != nil {
 		fmt.Println("open sms out file error")
 		log.Fatal(err)
@@ -110,17 +118,46 @@ func get_message_from_db(dbh *sqlite3.Conn) {
 	for data, err := dbh.Query(sql); err == nil; err = data.Next() {
 		data.Scan(row)
 		if str, ok := row["text"].(string); ok {
-			if _, err := out_file.WriteString(str); err != nil {
+			phone_number := get_phone_number(row["guid"])
+			sms := phone_number + " " + str
+			if _, err := out_file.WriteString(sms); err != nil {
 				fmt.Println("write sms file error")
 				log.Fatal(err)
 			}
-			out_file.WriteString("\n")
+			if strings.EqualFold(runtime.GOOS, "windows") {
+				out_file.WriteString("\r\n")
+			} else {
+				out_file.WriteString("\n")
+			}
 		} else {
 			fmt.Println("interface to string error")
 			fmt.Println(row)
 		}
 	}
+
+	fmt.Println("Export OK")
+}
+
+func get_phone_number(sms_number interface{}) string {
+	if str, ok := sms_number.(string); ok {
+		number_format, _ := regexp.Compile(`\d+`)
+		phone := number_format.FindString(str)
+		return phone
+	}
+
+	return "unknown"
+}
+
+func get_backup_file() string {
+	current_dir, err := user.Current()
+	if err != nil {
+		fmt.Println("get backup file error")
+		log.Fatal(err)
+	}
+	pathinfo := []string{current_dir.HomeDir, "Desktop", "sms_backup.txt"}
+	backup_file := make_path(pathinfo)
+
+	return backup_file
 }
 
 // for my friend Alice
-
