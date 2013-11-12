@@ -103,6 +103,7 @@ func exists_message_table(dbh *sqlite3.Conn) int {
 }
 
 func get_message_from_db(dbh *sqlite3.Conn) {
+	// datetime(message.date + 978307200, 'unixepoch', 'localtime') as m_date
 	sql := `select chat.guid, message.text, message.date + 978307200 as m_date
         from chat, message where chat.account_id=message.account_guid order by
         chat.guid, message.date;`
